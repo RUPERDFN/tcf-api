@@ -1,0 +1,900 @@
+Eres Replit Agent trabajando en el proyecto tcf-api.
+
+OBJETIVO: Crear API REST completa para TheCookFlow con Node.js + TypeScript + Express + PostgreSQL.
+
+CONTEXTO:
+- Backend principal que maneja: autenticación, perfiles, menús, listas de compra, suscripciones
+- Conecta con PostgreSQL en Coolify (DATABASE_URL ya configurado en Secrets)
+- Integra con SkinChef (servicio IA separado)
+- JWT para autenticación
+- Rate limiting y validaciones estrictas
+
+PASO 1: CREAR PACKAGE.JSON
+{
+  "name": "tcf-api",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "compression": "^1.7.4",
+    "pg": "^8.11.3",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "zod": "^3.22.4",
+    "dotenv": "^16.3.1",
+    "pino": "^8.17.2",
+    "pino-pretty": "^10.3.1",
+    "express-rate-limit": "^7.1.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "tsx": "^4.7.0",
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/bcrypt": "^5.0.2",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/pg": "^8.10.9",
+    "@types/compression": "^1.7.5",
+    "@types/node": "^20.10.6"
+  }
+}
+
+PASO 2: CREAR TSCONFIG.JSON
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
+
+PASO 3: CREAR .REPLIT
+run = "npm run dev"
+entrypoint = "src/index.ts"
+
+[nix]
+channel = "stable-23_11"
+
+[deployment]
+run = ["npm", "run", "build", "&&", "npm", "start"]
+deploymentTarget = "cloudrun"
+
+PASO 4: CREAR ESTRUCTURA DE CARPETAS Y ARCHIVOS
+
+src/
+├── index.ts
+├── config/
+│   ├── db.ts
+│   └── env.ts
+├── middleware/
+│   ├── auth.ts
+│   ├── errorHandler.ts
+│   └── rateLimiter.ts
+├── routes/
+│   ├── auth.ts
+│   ├── profile.ts
+│   ├── menus.ts
+│   ├── shopping.ts
+│   ├── subscriptions.ts
+│   ├── achievements.ts
+│   ├── stats.ts
+│   └── events.ts
+├── utils/
+│   ├── validation.ts
+│   ├── logger.ts
+│   └── jwt.ts
+└── types/
+    └── index.ts
+
+sql/
+└── schema.sql
+
+PASO 5: IMPLEMENTAR ARCHIVOS (Contenido exacto):
+
+--- src/config/env.ts ---
+import dotenv from 'dotenv';
+dotenv.config();
+
+export const env = {
+  PORT: parseInt(process.env.PORT || '3000'),
+  NODE_ENV: process.env.NODE_ENV || 'development',
+  DATABASE_URL: process.env.DATABASE_URL!,
+  JWT_SECRET: process.env.JWT_SECRET!,
+  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',
+  BCRYPT_ROUNDS: parseInt(process.env.BCRYPT_ROUNDS || '10'),
+  CORS_ORIGINS: (process.env.CORS_ORIGINS || '').split(',').filter(Boolean),
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY || ''
+};
+
+if (!env.DATABASE_URL) throw new Error('DATABASE_URL no configurado');
+if (!env.JWT_SECRET) throw new Error('JWT_SECRET no configurado');
+
+--- src/config/db.ts ---
+import pg from 'pg';
+import { env } from './env.js';
+
+const { Pool } = pg;
+
+export const pool = new Pool({
+  connectionString: env.DATABASE_URL,
+  ssl: env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000
+});
+
+pool.on('error', (err) => {
+  console.error('PostgreSQL pool error:', err);
+});
+
+export async function query(text: string, params?: any[]) {
+  const start = Date.now();
+  try {
+    const res = await pool.query(text, params);
+    const duration = Date.now() - start;
+    console.log('Query ejecutada', { duration, rows: res.rowCount });
+    return res;
+  } catch (error) {
+    console.error('Query error:', error);
+    throw error;
+  }
+}
+
+--- src/utils/logger.ts ---
+import pino from 'pino';
+
+export const logger = pino({
+  level: process.env.LOG_LEVEL || 'info',
+  transport: {
+    target: 'pino-pretty',
+    options: {
+      colorize: true,
+      translateTime: 'SYS:standard',
+      ignore: 'pid,hostname'
+    }
+  }
+});
+
+--- src/utils/jwt.ts ---
+import jwt from 'jsonwebtoken';
+import { env } from '../config/env.js';
+
+export function signToken(payload: { userId: string; email: string }) {
+  return jwt.sign(payload, env.JWT_SECRET, {
+    expiresIn: env.JWT_EXPIRES_IN
+  });
+}
+
+export function verifyToken(token: string) {
+  return jwt.verify(token, env.JWT_SECRET) as { userId: string; email: string };
+}
+
+--- src/utils/validation.ts ---
+import { z } from 'zod';
+
+export const registerSchema = z.object({
+  email: z.string().email('Email inválido'),
+  password: z.string().min(8, 'Password mínimo 8 caracteres')
+});
+
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1)
+});
+
+export const profileSchema = z.object({
+  budget_eur_week: z.number().min(30).max(500),
+  diners: z.number().int().min(1).max(20),
+  meals_per_day: z.number().int().min(1).max(3),
+  days: z.number().int().refine(v => [3, 5, 7].includes(v), 'Días debe ser 3, 5 o 7'),
+  diet_type: z.string().min(1),
+  allergies: z.array(z.string()),
+  favorite_foods: z.array(z.string()).min(3, 'Mínimo 3 alimentos favoritos'),
+  disliked_foods: z.array(z.string()).optional(),
+  pantry_items: z.string().optional()
+});
+
+export const menuSchema = z.object({
+  days: z.number().int().min(3).max(7),
+  menu_json: z.any(),
+  total_cost_eur: z.number().optional()
+});
+
+--- src/middleware/auth.ts ---
+import { Request, Response, NextFunction } from 'express';
+import { verifyToken } from '../utils/jwt.js';
+
+export interface AuthRequest extends Request {
+  user?: { userId: string; email: string };
+}
+
+export async function requireAuth(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Token no proporcionado' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const decoded = verifyToken(token);
+    
+    req.user = { userId: decoded.userId, email: decoded.email };
+    next();
+  } catch (error) {
+    res.status(401).json({ error: 'Token inválido o expirado' });
+  }
+}
+
+--- src/middleware/errorHandler.ts ---
+import { Request, Response, NextFunction } from 'express';
+import { logger } from '../utils/logger.js';
+import { ZodError } from 'zod';
+
+export function errorHandler(
+  err: any,
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  logger.error('Error:', err);
+
+  if (err instanceof ZodError) {
+    return res.status(400).json({
+      error: 'Validación fallida',
+      details: err.errors.map(e => ({ field: e.path.join('.'), message: e.message }))
+    });
+  }
+
+  if (err.code === '23505') {
+    return res.status(400).json({ error: 'Registro duplicado' });
+  }
+
+  res.status(err.status || 500).json({
+    error: err.message || 'Error interno del servidor'
+  });
+}
+
+--- src/middleware/rateLimiter.ts ---
+import rateLimit from 'express-rate-limit';
+
+export const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: 'Demasiados intentos de autenticación. Intenta en 15 minutos'
+});
+
+export const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: 'Demasiadas peticiones'
+});
+
+--- src/routes/auth.ts ---
+import { Router } from 'express';
+import bcrypt from 'bcrypt';
+import { query } from '../config/db.js';
+import { env } from '../config/env.js';
+import { signToken } from '../utils/jwt.js';
+import { registerSchema, loginSchema } from '../utils/validation.js';
+import { logger } from '../utils/logger.js';
+
+const router = Router();
+
+router.post('/register', async (req, res, next) => {
+  try {
+    const { email, password } = registerSchema.parse(req.body);
+    
+    const hash = await bcrypt.hash(password, env.BCRYPT_ROUNDS);
+    
+    const result = await query(
+      'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at',
+      [email, hash]
+    );
+    
+    const user = result.rows[0];
+    
+    // Crear user_stats inicial
+    await query('INSERT INTO user_stats (user_id) VALUES ($1)', [user.id]);
+    
+    const token = signToken({ userId: user.id, email: user.email });
+    
+    logger.info(`Usuario registrado: ${email}`);
+    
+    res.status(201).json({
+      user: { id: user.id, email: user.email },
+      token
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/login', async (req, res, next) => {
+  try {
+    const { email, password } = loginSchema.parse(req.body);
+    
+    const result = await query(
+      'SELECT id, email, password_hash FROM users WHERE email = $1',
+      [email]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Credenciales inválidas' });
+    }
+    
+    const user = result.rows[0];
+    const valid = await bcrypt.compare(password, user.password_hash);
+    
+    if (!valid) {
+      return res.status(401).json({ error: 'Credenciales inválidas' });
+    }
+    
+    const token = signToken({ userId: user.id, email: user.email });
+    
+    logger.info(`Usuario login: ${email}`);
+    
+    res.json({
+      user: { id: user.id, email: user.email },
+      token
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
+
+--- src/routes/profile.ts ---
+import { Router } from 'express';
+import { query } from '../config/db.js';
+import { requireAuth, AuthRequest } from '../middleware/auth.js';
+import { profileSchema } from '../utils/validation.js';
+
+const router = Router();
+
+router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await query(
+      'SELECT * FROM user_profile WHERE user_id = $1',
+      [req.user!.userId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.json({ exists: false });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const data = profileSchema.parse(req.body);
+    
+    const result = await query(
+      `INSERT INTO user_profile (
+        user_id, budget_eur_week, diners, meals_per_day, days,
+        diet_type, allergies, favorite_foods, disliked_foods, pantry_items
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ON CONFLICT (user_id) DO UPDATE SET
+        budget_eur_week = $2,
+        diners = $3,
+        meals_per_day = $4,
+        days = $5,
+        diet_type = $6,
+        allergies = $7,
+        favorite_foods = $8,
+        disliked_foods = $9,
+        pantry_items = $10,
+        updated_at = NOW()
+      RETURNING *`,
+      [
+        req.user!.userId,
+        data.budget_eur_week,
+        data.diners,
+        data.meals_per_day,
+        data.days,
+        data.diet_type,
+        JSON.stringify(data.allergies),
+        JSON.stringify(data.favorite_foods),
+        JSON.stringify(data.disliked_foods || []),
+        data.pantry_items || ''
+      ]
+    );
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
+
+--- src/routes/menus.ts ---
+import { Router } from 'express';
+import { query } from '../config/db.js';
+import { requireAuth, AuthRequest } from '../middleware/auth.js';
+import { menuSchema } from '../utils/validation.js';
+
+const router = Router();
+
+router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const data = menuSchema.parse(req.body);
+    
+    await query(
+      'UPDATE menus SET is_active = false WHERE user_id = $1',
+      [req.user!.userId]
+    );
+    
+    const result = await query(
+      `INSERT INTO menus (user_id, days, menu_json, total_cost_eur, is_active)
+       VALUES ($1, $2, $3, $4, true)
+       RETURNING id, created_at`,
+      [req.user!.userId, data.days, JSON.stringify(data.menu_json), data.total_cost_eur]
+    );
+    
+    await query(
+      'UPDATE user_stats SET total_menus_generated = total_menus_generated + 1, last_activity_at = NOW() WHERE user_id = $1',
+      [req.user!.userId]
+    );
+    
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/latest', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await query(
+      'SELECT * FROM menus WHERE user_id = $1 AND is_active = true ORDER BY created_at DESC LIMIT 1',
+      [req.user!.userId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'No hay menú activo' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/history', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
+    const offset = parseInt(req.query.offset as string) || 0;
+    
+    const result = await query(
+      'SELECT id, days, total_cost_eur, version, created_at FROM menus WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
+      [req.user!.userId, limit, offset]
+    );
+    
+    res.json({ menus: result.rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
+
+--- src/routes/shopping.ts ---
+import { Router } from 'express';
+import { query } from '../config/db.js';
+import { requireAuth, AuthRequest } from '../middleware/auth.js';
+
+const router = Router();
+
+router.post('/', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const { menu_id, list_json, total_items, estimated_cost_eur } = req.body;
+    
+    const result = await query(
+      `INSERT INTO shopping_lists (user_id, menu_id, list_json, total_items, estimated_cost_eur)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, created_at`,
+      [req.user!.userId, menu_id, JSON.stringify(list_json), total_items, estimated_cost_eur]
+    );
+    
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/latest', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await query(
+      'SELECT * FROM shopping_lists WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [req.user!.userId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'No hay lista de compra' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
+
+--- src/routes/subscriptions.ts ---
+import { Router } from 'express';
+import { query } from '../config/db.js';
+import { requireAuth, AuthRequest } from '../middleware/auth.js';
+
+const router = Router();
+
+router.get('/status', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await query(
+      'SELECT * FROM subscriptions WHERE user_id = $1',
+      [req.user!.userId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.json({
+        status: 'free',
+        features: {
+          menus_per_week: 1,
+          swaps_per_menu: 0,
+          export_shopping: false
+        }
+      });
+    }
+    
+    const sub = result.rows[0];
+    const now = new Date();
+    const trialActive = sub.trial_end && new Date(sub.trial_end) > now;
+    const periodActive = sub.current_period_end && new Date(sub.current_period_end) > now;
+    
+    const isActive = sub.status === 'active' || trialActive;
+    
+    res.json({
+      ...sub,
+      is_active: isActive,
+      features: isActive ? {
+        menus_per_week: 'unlimited',
+        swaps_per_menu: 'unlimited',
+        export_shopping: true
+      } : {
+        menus_per_week: 1,
+        swaps_per_menu: 0,
+        export_shopping: false
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/trial/start', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const trialEnd = new Date();
+    trialEnd.setDate(trialEnd.getDate() + 7);
+    
+    const result = await query(
+      `INSERT INTO subscriptions (user_id, status, trial_start, trial_end)
+       VALUES ($1, 'trial', NOW(), $2)
+       ON CONFLICT (user_id) DO NOTHING
+       RETURNING *`,
+      [req.user!.userId, trialEnd]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(400).json({ error: 'Trial ya iniciado previamente' });
+    }
+    
+    res.json({ trial_end: trialEnd });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
+
+--- src/routes/achievements.ts ---
+import { Router } from 'express';
+import { query } from '../config/db.js';
+import { requireAuth, AuthRequest } from '../middleware/auth.js';
+
+const router = Router();
+
+router.get('/', async (req, res, next) => {
+  try {
+    const result = await query('SELECT * FROM achievements ORDER BY points ASC');
+    res.json({ achievements: result.rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/user', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const earned = await query(
+      `SELECT a.*, ua.earned_at
+       FROM achievements a
+       JOIN user_achievements ua ON a.id = ua.achievement_id
+       WHERE ua.user_id = $1
+       ORDER BY ua.earned_at DESC`,
+      [req.user!.userId]
+    );
+    
+    const available = await query(
+      `SELECT * FROM achievements
+       WHERE id NOT IN (
+         SELECT achievement_id FROM user_achievements WHERE user_id = $1
+       )
+       ORDER BY points ASC`,
+      [req.user!.userId]
+    );
+    
+    res.json({
+      earned: earned.rows,
+      available: available.rows
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
+
+--- src/routes/stats.ts ---
+import { Router } from 'express';
+import { query } from '../config/db.js';
+import { requireAuth, AuthRequest } from '../middleware/auth.js';
+
+const router = Router();
+
+router.get('/', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await query(
+      'SELECT * FROM user_stats WHERE user_id = $1',
+      [req.user!.userId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.json({
+        total_points: 0,
+        level: 1,
+        total_menus_generated: 0
+      });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
+
+--- src/routes/events.ts ---
+import { Router } from 'express';
+import { query } from '../config/db.js';
+import { AuthRequest } from '../middleware/auth.js';
+
+const router = Router();
+
+router.post('/', async (req: AuthRequest, res, next) => {
+  try {
+    const { event_name, event_data, session_id } = req.body;
+    
+    await query(
+      `INSERT INTO events (user_id, event_name, event_data, session_id, ip_address, user_agent)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        req.user?.userId || null,
+        event_name,
+        JSON.stringify(event_data || {}),
+        session_id || null,
+        req.ip,
+        req.get('user-agent') || null
+      ]
+    );
+    
+    res.status(201).json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
+
+--- src/index.ts ---
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import compression from 'compression';
+import { env } from './config/env.js';
+import { pool } from './config/db.js';
+import { logger } from './utils/logger.js';
+import { errorHandler } from './middleware/errorHandler.js';
+import { authLimiter, generalLimiter } from './middleware/rateLimiter.js';
+
+import authRoutes from './routes/auth.js';
+import profileRoutes from './routes/profile.js';
+import menusRoutes from './routes/menus.js';
+import shoppingRoutes from './routes/shopping.js';
+import subscriptionsRoutes from './routes/subscriptions.js';
+import achievementsRoutes from './routes/achievements.js';
+import statsRoutes from './routes/stats.js';
+import eventsRoutes from './routes/events.js';
+
+const app = express();
+
+// Middleware global
+app.use(helmet());
+app.use(compression());
+app.use(cors({
+  origin: env.CORS_ORIGINS.length > 0 ? env.CORS_ORIGINS : true,
+  credentials: true
+}));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(generalLimiter);
+
+// Health check
+app.get('/api/health', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({
+      ok: true,
+      db: true,
+      timestamp: new Date().toISOString(),
+      env: env.NODE_ENV
+    });
+  } catch (error) {
+    logger.error('Health check failed:', error);
+    res.status(500).json({ ok: false, db: false });
+  }
+});
+
+// Routes
+app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/profile', profileRoutes);
+app.use('/api/menus', menusRoutes);
+app.use('/api/shopping', shoppingRoutes);
+app.use('/api/subscriptions', subscriptionsRoutes);
+app.use('/api/achievements', achievementsRoutes);
+app.use('/api/stats', statsRoutes);
+app.use('/api/events', eventsRoutes);
+
+// 404
+app.use((req, res) => {
+  res.status(404).json({ error: 'Ruta no encontrada' });
+});
+
+// Error handler
+app.use(errorHandler);
+
+// Start server
+const PORT = env.PORT;
+app.listen(PORT, () => {
+  logger.info(`🚀 API corriendo en puerto ${PORT}`);
+  logger.info(`📝 Environment: ${env.NODE_ENV}`);
+  logger.info(`🔗 CORS: ${env.CORS_ORIGINS.join(', ')}`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  logger.info('SIGTERM recibido, cerrando...');
+  await pool.end();
+  process.exit(0);
+});
+
+PASO 6: CREAR sql/schema.sql (ESQUEMA COMPLETO DE BASE DE DATOS)
+
+Crea el archivo sql/schema.sql con TODO el esquema PostgreSQL que te voy a dar a continuación. Este archivo es CRÍTICO porque define todas las tablas.
+
+[Por razones de espacio, voy a darte el schema SQL en un mensaje separado - es el mismo que te di antes en el prompt original]
+
+PASO 7: CREAR README.md
+# tcf-api
+
+API REST para TheCookFlow - Backend principal
+
+## Stack
+- Node.js 20
+- TypeScript
+- Express
+- PostgreSQL
+- JWT Auth
+- Zod Validation
+
+## Setup Local
+1. Configurar Secrets en Replit
+2. `npm install`
+3. `npm run dev`
+
+## Endpoints
+
+### Auth
+- POST /api/auth/register - Registrar usuario
+- POST /api/auth/login - Login
+
+### Profile  
+- GET /api/profile - Obtener perfil
+- PUT /api/profile - Actualizar perfil (onboarding)
+
+### Menus
+- POST /api/menus - Guardar menú nuevo
+- GET /api/menus/latest - Obtener menú activo
+- GET /api/menus/history - Historial
+
+### Shopping
+- POST /api/shopping - Guardar lista
+- GET /api/shopping/latest - Última lista
+
+### Subscriptions
+- GET /api/subscriptions/status - Estado suscripción
+- POST /api/subscriptions/trial/start - Iniciar trial 7 días
+
+### Achievements
+- GET /api/achievements - Todos los logros
+- GET /api/achievements/user - Logros del usuario
+
+### Stats
+- GET /api/stats - Estadísticas usuario
+
+### Events
+- POST /api/events - Registrar evento analytics
+
+## Testing
+```bash
+curl http://localhost:3000/api/health
+```
+
+## Deploy
+Coolify auto-deploy desde GitHub main branch.
+
+PASO 8: CREAR .gitignore
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.DS_Store
+
+VERIFICACIÓN FINAL:
+1. Ejecuta: npm install
+2. Ejecuta: npm run dev
+3. Debería arrancar sin errores
+4. Visita: http://localhost:3000/api/health
+5. Debe responder: {"ok":true,"db":true,"timestamp":"..."}
+
+COMMIT:
+git add .
+git commit -m "feat: api complete with all endpoints v1.0.0"
+git push origin main
+
+Confirma cuando TODO esté creado y funcionando.
