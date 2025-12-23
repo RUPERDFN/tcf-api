@@ -27,3 +27,16 @@ export const menuSchema = z.object({
   menu_json: z.any(),
   total_cost_eur: z.number().optional()
 });
+
+export const shoppingListSchema = z.object({
+  menu_id: z.string().uuid().optional(),
+  list_json: z.any(),
+  total_items: z.number().int().min(0).optional(),
+  estimated_cost_eur: z.number().min(0).optional()
+});
+
+export const eventSchema = z.object({
+  event_name: z.string().min(1, 'event_name es requerido'),
+  event_data: z.any().optional(),
+  session_id: z.string().optional()
+});
