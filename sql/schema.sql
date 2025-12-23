@@ -1,126 +1,254 @@
--- TheCookFlow Database Schema
+-- Extensions
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- Users table
+-- Tabla: users
 CREATE TABLE IF NOT EXISTS users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email VARCHAR(255) UNIQUE NOT NULL,
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  email TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
+  email_verified BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- User profile
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+-- Tabla: user_profile
 CREATE TABLE IF NOT EXISTS user_profile (
   user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  budget_eur_week DECIMAL(10,2) NOT NULL CHECK (budget_eur_week >= 30 AND budget_eur_week <= 500),
-  diners INT NOT NULL CHECK (diners >= 1 AND diners <= 20),
-  meals_per_day INT NOT NULL CHECK (meals_per_day >= 1 AND meals_per_day <= 3),
-  days INT NOT NULL CHECK (days IN (3, 5, 7)),
-  diet_type VARCHAR(100) NOT NULL,
-  allergies JSONB DEFAULT '[]',
-  favorite_foods JSONB NOT NULL,
-  disliked_foods JSONB DEFAULT '[]',
+  budget_eur_week NUMERIC(6,2) NOT NULL,
+  diners INTEGER NOT NULL CHECK (diners >= 1),
+  meals_per_day INTEGER NOT NULL CHECK (meals_per_day BETWEEN 1 AND 3),
+  days INTEGER NOT NULL CHECK (days IN (3, 5, 7)),
+  diet_type TEXT NOT NULL,
+  allergies JSONB DEFAULT '[]'::jsonb,
+  favorite_foods JSONB DEFAULT '[]'::jsonb,
+  disliked_foods JSONB DEFAULT '[]'::jsonb,
   pantry_items TEXT,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
+  fridge_photo_url TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Menus table
+-- Tabla: menus
 CREATE TABLE IF NOT EXISTS menus (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  days INT NOT NULL,
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  days INTEGER NOT NULL,
   menu_json JSONB NOT NULL,
-  total_cost_eur DECIMAL(10,2),
-  version INT DEFAULT 1,
-  is_active BOOLEAN DEFAULT false,
-  created_at TIMESTAMP DEFAULT NOW()
+  total_cost_eur NUMERIC(6,2),
+  version INTEGER DEFAULT 1,
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_menus_user_active ON menus(user_id, is_active);
 CREATE INDEX IF NOT EXISTS idx_menus_created ON menus(created_at DESC);
 
--- Shopping lists
+-- Tabla: recipes (opcional, para catálogo futuro)
+CREATE TABLE IF NOT EXISTS recipes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  description TEXT,
+  meal_type TEXT,
+  cuisine_type TEXT,
+  difficulty TEXT,
+  prep_time_min INTEGER,
+  cook_time_min INTEGER,
+  total_time_min INTEGER,
+  servings INTEGER,
+  ingredients JSONB,
+  steps JSONB,
+  nutritional_info JSONB,
+  tags JSONB,
+  allergens JSONB,
+  cost_estimate_eur NUMERIC(5,2),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_recipes_meal_type ON recipes(meal_type);
+CREATE INDEX IF NOT EXISTS idx_recipes_difficulty ON recipes(difficulty);
+
+-- Tabla: shopping_lists
 CREATE TABLE IF NOT EXISTS shopping_lists (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  menu_id UUID REFERENCES menus(id) ON DELETE SET NULL,
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  menu_id UUID REFERENCES menus(id) ON DELETE CASCADE,
   list_json JSONB NOT NULL,
-  total_items INT,
-  estimated_cost_eur DECIMAL(10,2),
-  created_at TIMESTAMP DEFAULT NOW()
+  total_items INTEGER,
+  estimated_cost_eur NUMERIC(6,2),
+  purchased BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_shopping_user ON shopping_lists(user_id);
+CREATE INDEX IF NOT EXISTS idx_shopping_menu ON shopping_lists(menu_id);
 
--- Subscriptions
+-- Tabla: subscriptions
 CREATE TABLE IF NOT EXISTS subscriptions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  status VARCHAR(50) DEFAULT 'free',
-  trial_start TIMESTAMP,
-  trial_end TIMESTAMP,
-  current_period_start TIMESTAMP,
-  current_period_end TIMESTAMP,
-  stripe_customer_id VARCHAR(255),
-  stripe_subscription_id VARCHAR(255),
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'free' CHECK (status IN ('free', 'trial', 'active', 'past_due', 'canceled', 'expired')),
+  provider TEXT,
+  provider_subscription_id TEXT,
+  plan_type TEXT,
+  price_eur NUMERIC(5,2),
+  trial_start TIMESTAMPTZ,
+  trial_end TIMESTAMPTZ,
+  current_period_start TIMESTAMPTZ,
+  current_period_end TIMESTAMPTZ,
+  cancel_at_period_end BOOLEAN DEFAULT FALSE,
+  canceled_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Achievements
+-- Tabla: achievements
 CREATE TABLE IF NOT EXISTS achievements (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  code VARCHAR(100) UNIQUE NOT NULL,
-  name VARCHAR(255) NOT NULL,
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  key TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
   description TEXT,
-  icon VARCHAR(100),
-  points INT DEFAULT 0,
-  created_at TIMESTAMP DEFAULT NOW()
+  icon TEXT,
+  points INTEGER DEFAULT 0,
+  category TEXT,
+  requirements JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- User achievements
+-- Tabla: user_achievements
 CREATE TABLE IF NOT EXISTS user_achievements (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  achievement_id UUID NOT NULL REFERENCES achievements(id) ON DELETE CASCADE,
-  earned_at TIMESTAMP DEFAULT NOW(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  achievement_id UUID REFERENCES achievements(id) ON DELETE CASCADE,
+  earned_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(user_id, achievement_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_user_achievements ON user_achievements(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_achievements_user ON user_achievements(user_id);
 
--- User stats
+-- Tabla: user_stats
 CREATE TABLE IF NOT EXISTS user_stats (
   user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  total_points INT DEFAULT 0,
-  level INT DEFAULT 1,
-  total_menus_generated INT DEFAULT 0,
-  total_shopping_lists INT DEFAULT 0,
-  last_activity_at TIMESTAMP DEFAULT NOW(),
-  created_at TIMESTAMP DEFAULT NOW()
+  total_points INTEGER DEFAULT 0,
+  current_streak_days INTEGER DEFAULT 0,
+  longest_streak_days INTEGER DEFAULT 0,
+  total_menus_generated INTEGER DEFAULT 0,
+  total_recipes_completed INTEGER DEFAULT 0,
+  total_money_saved_eur NUMERIC(8,2) DEFAULT 0,
+  level INTEGER DEFAULT 1,
+  last_activity_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Events (analytics)
-CREATE TABLE IF NOT EXISTS events (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+-- Tabla: ai_runs (logging de llamadas IA)
+CREATE TABLE IF NOT EXISTS ai_runs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-  event_name VARCHAR(255) NOT NULL,
-  event_data JSONB,
-  session_id VARCHAR(255),
+  kind TEXT NOT NULL CHECK (kind IN ('menu_generate', 'menu_swap', 'substitution', 'vision', 'chat')),
+  input_json JSONB NOT NULL,
+  output_json JSONB,
+  model TEXT,
+  tokens_in INTEGER,
+  tokens_out INTEGER,
+  cost_usd NUMERIC(8,4),
+  duration_ms INTEGER,
+  success BOOLEAN DEFAULT TRUE,
+  error TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_runs_user ON ai_runs(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_runs_kind ON ai_runs(kind);
+CREATE INDEX IF NOT EXISTS idx_ai_runs_created ON ai_runs(created_at DESC);
+
+-- Tabla: events (analytics)
+CREATE TABLE IF NOT EXISTS events (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  event_name TEXT NOT NULL,
+  event_data JSONB DEFAULT '{}'::jsonb,
+  session_id TEXT,
   ip_address INET,
   user_agent TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id);
 CREATE INDEX IF NOT EXISTS idx_events_name ON events(event_name);
 CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at DESC);
 
--- Seed basic achievements
-INSERT INTO achievements (code, name, description, icon, points) VALUES
-  ('first_menu', 'Primer Menú', 'Crea tu primer menú semanal', '🍽️', 10),
-  ('week_streak', 'Semana Completa', 'Genera menús 7 días seguidos', '🔥', 50),
-  ('budget_master', 'Maestro del Presupuesto', 'Mantén el presupuesto 5 semanas', '💰', 100),
-  ('chef_explorer', 'Chef Explorador', 'Prueba 10 tipos de cocina diferentes', '🌍', 75)
-ON CONFLICT (code) DO NOTHING;
+-- Tabla: social_posts (para n8n automation)
+CREATE TABLE IF NOT EXISTS social_posts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  platform TEXT NOT NULL CHECK (platform IN ('instagram', 'tiktok', 'twitter', 'facebook', 'youtube')),
+  post_type TEXT,
+  title TEXT,
+  content TEXT NOT NULL,
+  media_urls JSONB DEFAULT '[]'::jsonb,
+  hashtags JSONB DEFAULT '[]'::jsonb,
+  scheduled_for TIMESTAMPTZ,
+  published_at TIMESTAMPTZ,
+  status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'scheduled', 'published', 'failed')),
+  engagement_data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_social_platform ON social_posts(platform);
+CREATE INDEX IF NOT EXISTS idx_social_status ON social_posts(status);
+CREATE INDEX IF NOT EXISTS idx_social_scheduled ON social_posts(scheduled_for);
+
+-- Tabla: email_leads (landing page)
+CREATE TABLE IF NOT EXISTS email_leads (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  email TEXT UNIQUE NOT NULL,
+  source TEXT DEFAULT 'landing',
+  subscribed BOOLEAN DEFAULT TRUE,
+  verified BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_leads_email ON email_leads(email);
+
+-- Función: actualizar updated_at automáticamente
+CREATE OR REPLACE FUNCTION update_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Triggers para updated_at
+DROP TRIGGER IF EXISTS users_updated_at ON users;
+CREATE TRIGGER users_updated_at
+  BEFORE UPDATE ON users
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS user_profile_updated_at ON user_profile;
+CREATE TRIGGER user_profile_updated_at
+  BEFORE UPDATE ON user_profile
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS subscriptions_updated_at ON subscriptions;
+CREATE TRIGGER subscriptions_updated_at
+  BEFORE UPDATE ON subscriptions
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS user_stats_updated_at ON user_stats;
+CREATE TRIGGER user_stats_updated_at
+  BEFORE UPDATE ON user_stats
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at();
+
+-- Datos iniciales: achievements
+INSERT INTO achievements (key, name, description, icon, points, category) VALUES
+('first_menu', 'Primer Menú', 'Genera tu primer menú semanal', '🎯', 50, 'beginner'),
+('week_streak', 'Racha Semanal', 'Usa la app 7 días seguidos', '🔥', 100, 'engagement'),
+('budget_master', 'Maestro del Ahorro', 'Ahorra más de 50€ en un mes', '💰', 150, 'savings'),
+('recipe_explorer', 'Explorador Culinario', 'Prueba 20 recetas diferentes', '🌍', 200, 'cooking'),
+('zero_waste', 'Cero Desperdicio', 'Completa 5 menús sin desperdiciar comida', '♻️', 250, 'sustainability')
+ON CONFLICT (key) DO NOTHING;

@@ -1,19 +1,6 @@
-import pg from 'pg';
-import { env } from './env.js';
+import { pool } from "../db";
 
-const { Pool } = pg;
-
-export const pool = new Pool({
-  connectionString: env.DATABASE_URL,
-  ssl: env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000
-});
-
-pool.on('error', (err) => {
-  console.error('PostgreSQL pool error:', err);
-});
+export { pool };
 
 export async function query(text: string, params?: any[]) {
   const start = Date.now();
