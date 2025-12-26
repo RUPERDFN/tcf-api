@@ -48,6 +48,11 @@ export const completedMeals = pgTable('completed_meals', {
   notes: text('notes'),
 });
 
+export interface BadgeEntry {
+  id: string;
+  unlockedAt: string;
+}
+
 export const gamification = pgTable('gamification', {
   id: serial('id').primaryKey(),
   userId: integer('user_id').references(() => users.id).notNull().unique(),
@@ -56,7 +61,7 @@ export const gamification = pgTable('gamification', {
   streak: integer('streak').default(0),
   longestStreak: integer('longest_streak').default(0),
   lastActiveDate: timestamp('last_active_date'),
-  badges: json('badges').$type<string[]>().default([]),
+  badges: json('badges').$type<BadgeEntry[]>().default([]),
 });
 
 export const pointsLog = pgTable('points_log', {
