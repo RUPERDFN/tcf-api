@@ -25,7 +25,7 @@ export interface GeneratedMenu {
   estimatedCost: number;
 }
 
-interface MealItem {
+export interface MealItem {
   name: string;
   ingredients: string[];
   instructions: string;
@@ -33,10 +33,17 @@ interface MealItem {
   calories: number;
 }
 
-interface ShoppingItem {
+export interface ShoppingItem {
   name: string;
   quantity: string;
   category: string;
+}
+
+export interface Recipe {
+  name: string;
+  ingredients: Array<{ name: string; quantity: string }>;
+  steps: string[];
+  time_min: number;
 }
 
 export async function generateMenu(request: MenuGenerationRequest): Promise<GeneratedMenu> {
@@ -51,28 +58,49 @@ export async function generateMenu(request: MenuGenerationRequest): Promise<Gene
       throw new Error(`SkinChef error: ${response.status}`);
     }
 
-    return await response.json();
+    return await response.json() as GeneratedMenu;
   } catch (error) {
     console.error('SkinChef service error:', error);
     throw new Error('Error generando menú con IA');
   }
 }
 
-export async function swapMeal(menuId: number, dayIndex: number, mealType: string, preferences: any): Promise<MealItem> {
+export async function swapMeal(
+  currentMeal: MealItem,
+  preferences: { dietType?: string; allergies?: string[]; dislikes?: string[] }
+): Promise<{ meal: MealItem; shoppingListChanges: { added: ShoppingItem[]; removed: ShoppingItem[] } }> {
   try {
     const response = await fetch(`${env.SKINCHEF_URL}/api/swap`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ menuId, dayIndex, mealType, preferences })
+      body: JSON.stringify({ currentMeal, preferences })
     });
 
     if (!response.ok) {
       throw new Error(`SkinChef swap error: ${response.status}`);
     }
 
-    return await response.json();
+    return await response.json() as { meal: MealItem; shoppingListChanges: { added: ShoppingItem[]; removed: ShoppingItem[] } };
   } catch (error) {
     console.error('SkinChef swap error:', error);
     throw new Error('Error intercambiando comida');
+  }
+}
+
+export async function getRecipe(mealName: string): Promise<Recipe> {
+  try {
+    const response = await fetch(`${env.SKINCHEF_URL}/api/recipe?name=${encodeURIComponent(mealName)}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (!response.ok) {
+      throw new Error(`SkinChef recipe error: ${response.status}`);
+    }
+
+    return await response.json() as Recipe;
+  } catch (error) {
+    console.error('SkinChef recipe error:', error);
+    throw new Error('Error obteniendo receta');
   }
 }
