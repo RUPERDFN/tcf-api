@@ -48,11 +48,6 @@ export const completedMeals = pgTable('completed_meals', {
   notes: text('notes'),
 });
 
-export interface BadgeEntry {
-  id: string;
-  unlockedAt: string;
-}
-
 export const gamification = pgTable('gamification', {
   id: serial('id').primaryKey(),
   userId: integer('user_id').references(() => users.id).notNull().unique(),
@@ -61,7 +56,7 @@ export const gamification = pgTable('gamification', {
   streak: integer('streak').default(0),
   longestStreak: integer('longest_streak').default(0),
   lastActiveDate: timestamp('last_active_date'),
-  badges: json('badges').$type<BadgeEntry[]>().default([]),
+  badges: json('badges').$type<string[]>().default([]),
 });
 
 export const pointsLog = pgTable('points_log', {
@@ -81,13 +76,4 @@ export const shoppingItems = pgTable('shopping_items', {
   category: varchar('category', { length: 50 }),
   isPurchased: boolean('is_purchased').default(false),
   purchasedAt: timestamp('purchased_at'),
-});
-
-export const passwordResetTokens = pgTable('password_reset_tokens', {
-  id: serial('id').primaryKey(),
-  userId: integer('user_id').references(() => users.id).notNull(),
-  token: varchar('token', { length: 255 }).notNull().unique(),
-  expiresAt: timestamp('expires_at').notNull(),
-  usedAt: timestamp('used_at'),
-  createdAt: timestamp('created_at').defaultNow(),
 });
