@@ -2,25 +2,22 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
-import { pool, query } from './config/db.js';
-import { env } from './config/env.js';
-import { logger } from './utils/logger.js';
-import { errorHandler } from './middleware/errorHandler.js';
-import { authLimiter, generalLimiter } from './middleware/rateLimiter.js';
+import morgan from 'morgan';
+import rateLimit from 'express-rate-limit';
 
-import authRoutes from './routes/auth.js';
-import profileRoutes from './routes/profile.js';
-import menusRoutes from './routes/menus.js';
-import shoppingRoutes from './routes/shopping.js';
-import subscriptionsRoutes from './routes/subscriptions.js';
-import achievementsRoutes from './routes/achievements.js';
-import statsRoutes from './routes/stats.js';
-import eventsRoutes from './routes/events.js';
+import { env } from './config/env.js';
+import { pool } from './config/database.js';
+import { errorHandler } from './middleware/errorHandler.middleware.js';
+
+import authRoutes from './routes/auth.routes.js';
+import usersRoutes from './routes/users.routes.js';
+import menusRoutes from './routes/menus.routes.js';
+import shoppingRoutes from './routes/shopping.routes.js';
+import gamificationRoutes from './routes/gamification.routes.js';
 
 const app = express();
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(morgan('combined'));
 
 app.use(helmet({
   contentSecurityPolicy: false,
@@ -30,16 +27,30 @@ app.use(helmet({
 app.use(compression());
 
 app.use(cors({
-  origin: env.CORS_ORIGINS.length > 0 ? env.CORS_ORIGINS : true,
+  origin: env.CORS_ORIGINS,
   credentials: true
 }));
 
-app.use('/api/', generalLimiter);
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { error: 'Demasiadas peticiones, intenta más tarde' }
+});
+app.use('/api/', limiter);
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Demasiados intentos de autenticación' }
+});
 app.use('/api/auth/', authLimiter);
 
 app.get('/api/health', async (req, res) => {
   try {
-    await query('SELECT 1');
+    await pool.query('SELECT 1');
     res.json({
       ok: true,
       db: true,
@@ -47,7 +58,7 @@ app.get('/api/health', async (req, res) => {
       env: env.NODE_ENV
     });
   } catch (error) {
-    logger.error({ error }, 'Health check failed');
+    console.error('Health check failed:', error);
     res.status(500).json({
       ok: false,
       db: false,
@@ -57,17 +68,16 @@ app.get('/api/health', async (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
-app.use('/api/profile', profileRoutes);
+app.use('/api/users', usersRoutes);
 app.use('/api/menus', menusRoutes);
 app.use('/api/shopping', shoppingRoutes);
-app.use('/api/subscriptions', subscriptionsRoutes);
-app.use('/api/achievements', achievementsRoutes);
-app.use('/api/stats', statsRoutes);
-app.use('/api/events', eventsRoutes);
+app.use('/api/gamification', gamificationRoutes);
 
 app.use(errorHandler);
 
 const port = env.PORT;
 app.listen(port, '0.0.0.0', () => {
-  logger.info(`TCF-API listening on port ${port}`);
+  console.log(`🚀 TCF-API running on port ${port}`);
+  console.log(`📍 Environment: ${env.NODE_ENV}`);
+  console.log(`🔗 CORS origins: ${env.CORS_ORIGINS.join(', ')}`);
 });
