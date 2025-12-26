@@ -11,6 +11,13 @@ export const loginSchema = z.object({
   password: z.string().min(1)
 });
 
+export const passwordSchema = z.string().min(8, 'Password mínimo 8 caracteres');
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'Token requerido'),
+  newPassword: z.string().min(8, 'Password mínimo 8 caracteres')
+});
+
 export const profileSchema = z.object({
   budgetWeekly: z.number().min(10).max(1000).optional(),
   diners: z.number().int().min(1).max(20).optional(),

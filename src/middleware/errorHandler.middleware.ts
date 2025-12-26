@@ -1,6 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 
+function getDbErrorCode(err: any): string | undefined {
+  return err.code || err.cause?.code;
+}
+
+function getDbConstraint(err: any): string | undefined {
+  return err.constraint || err.cause?.constraint;
+}
+
 export function errorHandler(err: any, req: Request, res: Response, next: NextFunction) {
   console.error('Error:', err);
 
@@ -11,11 +19,17 @@ export function errorHandler(err: any, req: Request, res: Response, next: NextFu
     });
   }
 
-  if (err.code === '23505') {
+  const dbCode = getDbErrorCode(err);
+  const constraint = getDbConstraint(err);
+
+  if (dbCode === '23505') {
+    if (constraint?.includes('email')) {
+      return res.status(400).json({ error: 'Este email ya está registrado' });
+    }
     return res.status(400).json({ error: 'Registro duplicado' });
   }
 
-  if (err.code === '23503') {
+  if (dbCode === '23503') {
     return res.status(400).json({ error: 'Referencia inválida' });
   }
 
