@@ -1,13 +1,23 @@
 import { Router } from 'express';
-import { getList, addItem, togglePurchased, deleteItem, getFromActiveMenu } from '../controllers/shopping.controller.js';
+import { 
+  getCurrent, 
+  toggleItem, 
+  addItem, 
+  deleteItem, 
+  getSubstitution,
+  exportPdf,
+  exportText
+} from '../controllers/shopping.controller.js';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
-router.get('/', authMiddleware, getList);
-router.get('/from-menu', authMiddleware, getFromActiveMenu);
-router.post('/', authMiddleware, addItem);
-router.patch('/:id', authMiddleware, togglePurchased);
-router.delete('/:id', authMiddleware, deleteItem);
+router.get('/current', authMiddleware, getCurrent);
+router.post('/toggle/:itemId', authMiddleware, toggleItem);
+router.post('/add', authMiddleware, addItem);
+router.delete('/:itemId', authMiddleware, deleteItem);
+router.post('/substitution', authMiddleware, getSubstitution);
+router.get('/export/pdf', authMiddleware, exportPdf);
+router.get('/export/text', authMiddleware, exportText);
 
 export default router;

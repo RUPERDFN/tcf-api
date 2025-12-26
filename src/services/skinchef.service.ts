@@ -104,3 +104,29 @@ export async function getRecipe(mealName: string): Promise<Recipe> {
     throw new Error('Error obteniendo receta');
   }
 }
+
+export interface Substitution {
+  name: string;
+  reason: string;
+  isHealthy: boolean;
+  nutritionComparison?: string;
+}
+
+export async function getSubstitutions(ingredient: string, reason?: string): Promise<Substitution[]> {
+  try {
+    const response = await fetch(`${env.SKINCHEF_URL}/api/substitutions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ingredient, reason })
+    });
+
+    if (!response.ok) {
+      throw new Error(`SkinChef substitutions error: ${response.status}`);
+    }
+
+    return await response.json() as Substitution[];
+  } catch (error) {
+    console.error('SkinChef substitutions error:', error);
+    throw new Error('Error obteniendo sustitutos');
+  }
+}
