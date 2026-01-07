@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  app:
+    image: ${NIXPACKS_IMAGE:-sc844wowsk0o4k84g8owosow}:${SOURCE_COMMIT:-latest}
+    container_name: ${COOLIFY_CONTAINER_NAME:-tcf-api}
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=${PORT:-3000}
+      - DATABASE_URL=${DATABASE_URL}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-7d}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SKINCHEF_API_URL=${SKINCHEF_API_URL}
+      - FRONTEND_URL=${FRONTEND_URL}
+      - LANDING_URL=${LANDING_URL}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - SOURCE_COMMIT=${SOURCE_COMMIT}
+      - COOLIFY_URL=${COOLIFY_URL}
+      - COOLIFY_FQDN=${COOLIFY_FQDN}
+      - COOLIFY_BRANCH=${COOLIFY_BRANCH}
+      - COOLIFY_RESOURCE_UUID=${COOLIFY_RESOURCE_UUID}
+      - HOST=${HOST:-0.0.0.0}
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${PORT:-3000}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - coolify
+
+networks:
+  coolify:
+    external: true
