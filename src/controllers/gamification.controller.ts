@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { db } from '../config/database.js';
-import { gamification, pointsLog, users, BadgeEntry } from '../../drizzle/schema.js';
+// import { gamification, pointsLog, users, BadgeEntry } from '../../drizzle/schema.js'; // Comentado temporalmente
 import { AuthRequest } from '../types/index.js';
 import { eq, desc, gte, sql } from 'drizzle-orm';
 
