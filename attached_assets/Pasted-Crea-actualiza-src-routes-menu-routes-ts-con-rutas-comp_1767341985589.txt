@@ -1,0 +1,63 @@
+Crea/actualiza src/routes/menu.routes.ts con rutas completas:
+
+IMPORTACIONES:
+- Router de express
+- Middleware de autenticación (authMiddleware)
+- skinchefService del servicio creado
+- Modelos de base de datos (drizzle)
+
+RUTAS (todas requieren autenticación con authMiddleware):
+
+POST /api/menu/generate
+- Genera menú semanal para el usuario autenticado
+- Body: { days: number } (validar: 1-14, default 7)
+- Obtener perfil del usuario de la base de datos usando req.user.id
+- Si no tiene perfil, devolver 400 "Debes completar tu perfil primero"
+- Llamar a skinchefService.generateMenu(userId, profile, days)
+- Guardar menú en tabla 'menus' con user_id, menu_data, shopping_list, created_at
+- Devolver: { success: true, menu, shopping_list }
+- Errores: 400 si no hay perfil, 500 si falla IA
+
+POST /api/menu/swap
+- Intercambia una comida del menú activo
+- Body: { day_index: number, meal_key: string, constraints?: string }
+- Validar: day_index 0-13, meal_key en ['breakfast','lunch','dinner','snack']
+- Obtener menú activo (más reciente) del usuario
+- Si no hay menú, devolver 404 "No tienes un menú activo"
+- Obtener perfil del usuario
+- Llamar a skinchefService.swapMeal()
+- Actualizar menú en base de datos
+- Devolver: { success: true, menu, shopping_list }
+
+GET /api/menu/current
+- Obtiene el menú activo (más reciente) del usuario
+- Query opcional: include_shopping=true (default true)
+- Buscar en tabla menus donde user_id = req.user.id, ordenar por created_at DESC, limit 1
+- Devolver: { success: true, menu, shopping_list, created_at } o { success: true, menu: null }
+
+GET /api/menu/history
+- Obtiene historial de menús del usuario
+- Query params: limit (default 10, max 50), offset (default 0)
+- Validar limit y offset son números positivos
+- Ordenar por created_at descendente
+- Contar total de menús del usuario
+- Devolver: { success: true, menus: [], total: number, limit, offset }
+
+DELETE /api/menu/:id
+- Elimina un menú del historial
+- Param: id (uuid del menú)
+- Buscar menú por id
+- Verificar que menu.user_id === req.user.id (si no, 403 "No tienes permiso")
+- Si no existe, 404 "Menú no encontrado"
+- Eliminar de la base de datos
+- Devolver: { success: true, message: "Menú eliminado correctamente" }
+
+VALIDACIÓN:
+- Usar zod o validación manual para todos los inputs
+- Devolver errores 400 con mensaje claro en español
+
+REGISTRO:
+- Añadir este router al app principal en /api/menu
+- Asegurar que authMiddleware protege todas las rutas
+
+Crear también el archivo si no existe y exportar el router

@@ -1,0 +1,67 @@
+Crea/actualiza src/routes/profile.routes.ts con rutas completas:
+
+IMPORTACIONES:
+- Router de express
+- authMiddleware
+- Base de datos (drizzle)
+- Validación con zod
+
+RUTAS (todas requieren autenticación):
+
+GET /api/profile
+- Obtiene el perfil completo del usuario autenticado
+- Buscar en tabla profiles donde user_id = req.user.id
+- Incluir: name, budget_eur_week, diners, meals_per_day, diet, allergies, dislikes, pantry_text, created_at, updated_at
+- Devolver: { success: true, profile } o { success: true, profile: null } si no existe
+
+PUT /api/profile
+- Crea o actualiza el perfil del usuario (upsert)
+- Body validado con zod:
+  {
+    name?: string (2-100 chars),
+    budget_eur_week?: number (20-500),
+    diners?: number (1-12),
+    meals_per_day?: number (1-4),
+    diet?: "omnivora" | "vegetariana" | "vegana" | "pescetariana" | "flexitariana",
+    allergies?: string[] (valores válidos: gluten, lactosa, frutos_secos, mariscos, huevo, soja, pescado),
+    dislikes?: string[] (max 50 items, cada uno max 50 chars),
+    pantry_text?: string (max 1000 chars)
+  }
+- Si existe perfil, actualizar campos proporcionados
+- Si no existe, crear nuevo con user_id = req.user.id
+- Devolver: { success: true, profile, message: "Perfil actualizado" }
+
+GET /api/profile/stats
+- Estadísticas del usuario para gamificación
+- Calcular:
+  - menus_generated: COUNT de menús del usuario
+  - recipes_completed: COUNT de meals completadas
+  - points: calculado según reglas (10 por menú, 5 por receta completada)
+  - level: Pinche (0-100), Cocinero (101-500), Chef (501-1000), Master Chef (1001+)
+  - member_since: fecha de creación del usuario
+  - streak_days: días consecutivos usando la app (si tienes tabla de actividad, sino 0)
+- Devolver: { success: true, stats: {...} }
+
+GET /api/profile/preferences
+- Obtiene solo las preferencias alimenticias (para enviar a skinchef)
+- Devolver: { success: true, preferences: { diet, allergies, dislikes, budget_eur_week, diners } }
+
+DELETE /api/profile
+- Elimina cuenta del usuario completamente (GDPR)
+- Body: { confirm: true } (requerido)
+- Si confirm !== true, devolver 400 "Debes confirmar la eliminación"
+- Eliminar en orden: menus del usuario, profile, user
+- Devolver: { success: true, message: "Cuenta eliminada correctamente" }
+
+VALIDACIÓN CON ZOD:
+- profileUpdateSchema para PUT /api/profile
+- Validar que allergies solo contenga valores permitidos
+- Validar que diet sea uno de los enum permitidos
+- Mensajes de error en español
+
+CONTROLADOR:
+- Crear src/controllers/profile.controller.ts con la lógica
+- Mantener las rutas limpias, solo llamando al controlador
+
+REGISTRO:
+- Añadir router en /api/profile en el app principal
