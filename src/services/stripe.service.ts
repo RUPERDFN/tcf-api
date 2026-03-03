@@ -17,7 +17,7 @@ import { subscriptions, users } from '../../drizzle/schema.js';
 import { eq } from 'drizzle-orm';
 
 const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
-    apiVersion: '2025-01-27.acacia'
+    apiVersion: '2026-01-28.clover'
 });
 
 export interface CheckoutSessionResult {
@@ -123,11 +123,11 @@ export async function handleWebhookEvent(
 
         case 'invoice.payment_succeeded': {
             const invoice = event.data.object as Stripe.Invoice;
-            const stripeSubId = invoice.subscription as string;
+            const stripeSubId = (invoice as any).subscription as string;
 
             // Renew: update period end
             const stripeSub = await stripe.subscriptions.retrieve(stripeSubId);
-            const periodEnd = new Date(stripeSub.current_period_end * 1000);
+            const periodEnd = new Date((stripeSub as any).current_period_end * 1000);
 
             await db
                 .update(subscriptions)
@@ -144,7 +144,7 @@ export async function handleWebhookEvent(
 
         case 'invoice.payment_failed': {
             const invoice = event.data.object as Stripe.Invoice;
-            const stripeSubId = invoice.subscription as string;
+            const stripeSubId = (invoice as any).subscription as string;
 
             await db
                 .update(subscriptions)
