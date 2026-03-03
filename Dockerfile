@@ -1,18 +1,23 @@
+# Stage 1: Build (instala todas las deps incluido TypeScript)
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+# Stage 2: Production (solo deps de producción)
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Copiar archivos de dependencias
 COPY package*.json ./
-
-# Instalar solo dependencias de producción
 RUN npm ci --only=production
 
-# Copiar código fuente
-COPY . .
-
-# Compilar TypeScript a JavaScript
-RUN npm run build
+COPY --from=builder /app/dist ./dist
 
 # Exponer puerto
 EXPOSE 3001
