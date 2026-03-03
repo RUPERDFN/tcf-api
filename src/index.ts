@@ -10,7 +10,7 @@ import { pool } from './config/database.js';
 import { env } from './config/env.js';
 
 const app = express();
-const PORT = 5000;
+const PORT = Number(process.env.PORT) || 5000;
 const startTime = Date.now();
 
 const defaultOrigins = [
