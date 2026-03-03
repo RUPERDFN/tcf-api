@@ -1,0 +1,27 @@
+services:
+  tcf-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    expose:
+      - "3001"
+    networks:
+      - dokploy-network
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - SKINCHEF_URL=${SKINCHEF_URL}
+      - PORT=3001
+      - NODE_ENV=production
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tcf-api.rule=Host(`api.thecookflow.com`)"
+      - "traefik.http.routers.tcf-api.entrypoints=websecure"
+      - "traefik.http.routers.tcf-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.tcf-api.loadbalancer.server.port=3001"
+
+networks:
+  dokploy-network:
+    external: true

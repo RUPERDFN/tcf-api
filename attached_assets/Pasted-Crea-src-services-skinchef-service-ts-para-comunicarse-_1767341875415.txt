@@ -1,0 +1,56 @@
+Crea src/services/skinchef.service.ts para comunicarse con el servicio de IA:
+
+CONFIGURACIÓN:
+- Base URL desde variable SKINCHEF_URL (default: http://localhost:8000)
+- Timeout de 30 segundos para todas las peticiones
+- Usar fetch nativo de Node.js 20
+
+MÉTODOS:
+
+async generateMenu(userId: string, profile: UserProfile, days: number): Promise<MenuResponse>
+- POST a /menu/generate
+- Body: { user_id, profile, days }
+- Devuelve: { menu, shopping_list }
+
+async swapMeal(userId: string, profile: UserProfile, menu: Menu, dayIndex: number, mealKey: string, constraints?: string): Promise<MenuResponse>
+- POST a /menu/swap
+- Body: { user_id, profile, menu, day_index, meal_key, constraints }
+- Devuelve: menú actualizado
+
+async getSubstitutions(userId: string, profile: UserProfile, ingredient: string, reason: string): Promise<SubstitutionResponse>
+- POST a /substitutions
+- Body: { user_id, profile, ingredient, reason }
+- Devuelve: { substitutions: [] }
+
+async chatWithChef(userId: string, message: string, context?: object): Promise<ChatResponse>
+- POST a /chef/chat
+- Body: { user_id, message, context }
+- Devuelve: { response, suggestions: [] }
+
+async getDailyTip(): Promise<TipResponse>
+- GET a /chef/tip
+- Devuelve: { tip, category }
+
+async estimateNutrition(mealName: string, ingredients: string[]): Promise<NutritionResponse>
+- POST a /chef/nutrition
+- Body: { meal_name, ingredients }
+- Devuelve: { calories_estimate, protein, carbs, fat, fiber, health_score, notes }
+
+async checkHealth(): Promise<boolean>
+- GET a /health
+- Devuelve true si responde, false si falla
+
+MANEJO DE ERRORES:
+- Crear clase SkinchefError extends Error para errores específicos
+- Logging de cada petición (método, url, duración)
+- Retry automático 1 vez en caso de timeout o error de red
+- Mensajes de error claros en español
+
+TIPOS (crear interfaces):
+- UserProfile: { budget_eur_week, diners, diet, allergies, dislikes, pantry_ingredients }
+- MenuResponse: { menu, shopping_list }
+- ChatResponse: { response, suggestions }
+- TipResponse: { tip, category }
+- NutritionResponse: { calories_estimate, protein, carbs, fat, fiber, health_score, notes }
+
+Exportar instancia singleton: export const skinchefService = new SkinchefService()

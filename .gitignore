@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.DS_Store
+.replit
+.cache/
+.upm/
+__pycache__/
+*.pyc
+.venv/
+server/public
+vite.config.ts.*
+*.tar.gz
+coverage/
+.nyc_output/
