@@ -41,7 +41,9 @@ export async function createCheckoutSession(
 
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
         mode: 'subscription',
-        payment_method_types: ['card'],
+        // No especificamos payment_method_types para activar métodos dinámicos:
+        // Stripe mostrará automáticamente Google Pay, Apple Pay, tarjeta, etc.
+        // según el navegador y país del usuario.
         line_items: [
             {
                 price: env.STRIPE_PRO_PRICE_ID,
